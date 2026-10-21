@@ -1,5 +1,4 @@
 #include "orderbook/spsc_channel.hpp"
-#include "orderbook/types.hpp"
 
 #include <gtest/gtest.h>
 
@@ -9,50 +8,55 @@
 namespace orderbook::test {
 namespace {
 
+struct TestMessage {
+  std::uint64_t sequence{};
+  std::uint64_t value{};
+};
+
 TEST(SpscChannel, PreservesFifoOrderAndReportsFull) {
-  SpscChannel<OrderRequest, 4> channel;
+  SpscChannel<TestMessage, 4> channel;
   auto writer = channel.make_writer();
   auto reader = channel.make_reader();
 
-  EXPECT_TRUE(writer.try_write(OrderRequest::cancel(1, 11)));
-  EXPECT_TRUE(writer.try_write(OrderRequest::cancel(2, 22)));
-  EXPECT_TRUE(writer.try_write(OrderRequest::cancel(3, 33)));
-  EXPECT_TRUE(writer.try_write(OrderRequest::cancel(4, 44)));
-  EXPECT_FALSE(writer.try_write(OrderRequest::cancel(5, 55)));
+  EXPECT_TRUE(writer.try_write({1, 11}));
+  EXPECT_TRUE(writer.try_write({2, 22}));
+  EXPECT_TRUE(writer.try_write({3, 33}));
+  EXPECT_TRUE(writer.try_write({4, 44}));
+  EXPECT_FALSE(writer.try_write({5, 55}));
 
   for (std::uint64_t sequence = 1; sequence <= 4; ++sequence) {
-    OrderRequest request;
-    ASSERT_TRUE(reader.try_read(request));
-    EXPECT_EQ(request.sequence, sequence);
-    EXPECT_EQ(request.order_id, sequence * 11);
+    TestMessage message;
+    ASSERT_TRUE(reader.try_read(message));
+    EXPECT_EQ(message.sequence, sequence);
+    EXPECT_EQ(message.value, sequence * 11);
   }
 
-  OrderRequest request;
-  EXPECT_FALSE(reader.try_read(request));
+  TestMessage message;
+  EXPECT_FALSE(reader.try_read(message));
 }
 
 TEST(SpscChannel, TransfersMessagesBetweenTwoThreads) {
   constexpr std::uint64_t kMessageCount = 100'000;
-  SpscChannel<OrderRequest, 1024> channel;
+  SpscChannel<TestMessage, 1024> channel;
   auto writer = channel.make_writer();
   auto reader = channel.make_reader();
 
   std::thread producer([writer = std::move(writer)]() mutable {
     for (std::uint64_t sequence = 1; sequence <= kMessageCount; ++sequence) {
-      const OrderRequest request = OrderRequest::cancel(sequence, sequence);
-      while (!writer.try_write(request)) {
+      const TestMessage message{sequence, sequence};
+      while (!writer.try_write(message)) {
         std::this_thread::yield();
       }
     }
   });
 
   for (std::uint64_t sequence = 1; sequence <= kMessageCount; ++sequence) {
-    OrderRequest request;
-    while (!reader.try_read(request)) {
+    TestMessage message;
+    while (!reader.try_read(message)) {
       std::this_thread::yield();
     }
-    ASSERT_EQ(request.sequence, sequence);
-    ASSERT_EQ(request.order_id, sequence);
+    ASSERT_EQ(message.sequence, sequence);
+    ASSERT_EQ(message.value, sequence);
   }
 
   producer.join();

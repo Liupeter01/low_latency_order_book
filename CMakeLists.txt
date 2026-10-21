@@ -20,19 +20,19 @@ if(ORDERBOOK_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
-# if(ORDERBOOK_BUILD_BENCHMARKS)
-#     find_package(benchmark CONFIG QUIET)
-#     if(NOT TARGET benchmark::benchmark)
-#         include(FetchContent)
-#         set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
-#         set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
-#         FetchContent_Declare(
-#             googlebenchmark
-#             GIT_REPOSITORY https://github.com/google/benchmark.git
-#             GIT_TAG v1.9.4
-#             GIT_SHALLOW TRUE
-#         )
-#         FetchContent_MakeAvailable(googlebenchmark)
-#     endif()
-#     add_subdirectory(benchmarks)
-# endif()
+if(ORDERBOOK_BUILD_BENCHMARKS)
+    find_package(benchmark CONFIG QUIET)
+    if(NOT TARGET benchmark::benchmark)
+        include(FetchContent)
+        set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+        set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+        FetchContent_Declare(
+            googlebenchmark
+            GIT_REPOSITORY https://github.com/google/benchmark.git
+            GIT_TAG v1.9.4
+            GIT_SHALLOW TRUE
+        )
+        FetchContent_MakeAvailable(googlebenchmark)
+    endif()
+    add_subdirectory(benchmarks)
+endif()

@@ -49,8 +49,7 @@ enum class CancelResult : std::uint8_t {
   UnknownOrder,
 };
 
-using TradeExecutionCallback = void (*)(const TradeExecution &,
-                                        void *context);
+using TradeExecutionCallback = void (*)(const TradeExecution &, void *context);
 
 class OrderBook {
 public:
@@ -156,8 +155,7 @@ private:
     std::map<BlockNumber, PriceBlock> blocks_;
   };
 
-  static bool can_match_at_price(Side incoming_side,
-                                 PriceTick incoming_limit,
+  static bool can_match_at_price(Side incoming_side, PriceTick incoming_limit,
                                  PriceTick resting_price) noexcept;
 
   PriceBlockTree &prices_for(Side side_value) noexcept;
@@ -165,8 +163,7 @@ private:
   PriceBlockTree &opposite_prices_for(Side side_value) noexcept;
 
   void remove_filled_resting_order(PriceBlockTree &opposite_prices,
-                                   PriceTick match_price,
-                                   PriceLevel &level,
+                                   PriceTick match_price, PriceLevel &level,
                                    NodeIndex resting_index);
 
   PriceBlockTree buy_prices_{PricePriority::Highest};

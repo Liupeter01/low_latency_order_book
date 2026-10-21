@@ -18,8 +18,7 @@ OrderBook::OrderPool::OrderPool(std::size_t capacity) : nodes_(capacity) {
   }
 }
 
-std::optional<OrderBook::NodeIndex>
-OrderBook::OrderPool::acquire() noexcept {
+std::optional<OrderBook::NodeIndex> OrderBook::OrderPool::acquire() noexcept {
   if (free_list_.empty()) {
     return std::nullopt;
   }
@@ -86,8 +85,7 @@ void OrderBook::PriceLevel::unlink(NodeIndex index, OrderPool &pool) noexcept {
   node.next = kInvalidNode;
 }
 
-OrderBook::PriceLevel &
-OrderBook::PriceBlock::level(std::size_t slot) noexcept {
+OrderBook::PriceLevel &OrderBook::PriceBlock::level(std::size_t slot) noexcept {
   return levels_[slot];
 }
 
@@ -164,8 +162,7 @@ OrderBook::PriceBlockTree::best_price() const noexcept {
                                ? block.highest_occupied_slot()
                                : block.lowest_occupied_slot();
 
-  return static_cast<PriceTick>(block_entry.first * kLevelsPerBlock +
-                                slot);
+  return static_cast<PriceTick>(block_entry.first * kLevelsPerBlock + slot);
 }
 
 OrderBook::PriceLevel *
@@ -196,8 +193,7 @@ OrderBook::PriceBlockTree::find_level(PriceTick price) const noexcept {
   return &iterator->second.level(slot);
 }
 
-OrderBook::PriceLevel &
-OrderBook::PriceBlockTree::operator[](PriceTick price) {
+OrderBook::PriceLevel &OrderBook::PriceBlockTree::operator[](PriceTick price) {
   PriceBlock &block = blocks_[block_number_for(price)];
   const std::size_t slot = slot_for(price);
   block.occupy(slot);
@@ -228,15 +224,13 @@ OrderBook::OrderBook(std::size_t maximum_active_orders)
   order_index_.reserve(maximum_active_orders);
 }
 
-bool OrderBook::can_match_at_price(Side incoming_side,
-                                   PriceTick incoming_limit,
+bool OrderBook::can_match_at_price(Side incoming_side, PriceTick incoming_limit,
                                    PriceTick resting_price) noexcept {
   return incoming_side == Side::Buy ? resting_price <= incoming_limit
                                     : resting_price >= incoming_limit;
 }
 
-OrderBook::PriceBlockTree &
-OrderBook::prices_for(Side side_value) noexcept {
+OrderBook::PriceBlockTree &OrderBook::prices_for(Side side_value) noexcept {
   return side_value == Side::Buy ? buy_prices_ : sell_prices_;
 }
 
@@ -250,9 +244,10 @@ OrderBook::opposite_prices_for(Side side_value) noexcept {
   return side_value == Side::Buy ? sell_prices_ : buy_prices_;
 }
 
-void OrderBook::remove_filled_resting_order(
-    PriceBlockTree &opposite_prices, PriceTick match_price,
-    PriceLevel &level, NodeIndex resting_index) {
+void OrderBook::remove_filled_resting_order(PriceBlockTree &opposite_prices,
+                                            PriceTick match_price,
+                                            PriceLevel &level,
+                                            NodeIndex resting_index) {
   const OrderId resting_order_id = pool_[resting_index].order_id;
   level.unlink(resting_index, pool_);
   order_index_.erase(resting_order_id);
@@ -287,8 +282,7 @@ SubmitResult OrderBook::submit(const AddOrder &order,
   PriceBlockTree &opposite_prices = opposite_prices_for(order.side);
 
   while (incoming_order.remaining_quantity > 0) {
-    const std::optional<PriceTick> match_price =
-        opposite_prices.best_price();
+    const std::optional<PriceTick> match_price = opposite_prices.best_price();
     if (!match_price.has_value() ||
         !can_match_at_price(order.side, order.price, *match_price)) {
       break;
@@ -299,9 +293,8 @@ SubmitResult OrderBook::submit(const AddOrder &order,
            level->head != kInvalidNode) {
       const NodeIndex resting_index = level->head;
       OrderNode &resting_order = pool_[resting_index];
-      const Quantity traded =
-          std::min(incoming_order.remaining_quantity,
-                   resting_order.remaining_quantity);
+      const Quantity traded = std::min(incoming_order.remaining_quantity,
+                                       resting_order.remaining_quantity);
 
       resting_order.remaining_quantity -= traded;
       incoming_order.remaining_quantity -= traded;
@@ -309,8 +302,7 @@ SubmitResult OrderBook::submit(const AddOrder &order,
       executed_quantity += traded;
 
       if (callback != nullptr) {
-        callback(TradeExecution{resting_order.order_id,
-                                incoming_order.order_id,
+        callback(TradeExecution{resting_order.order_id, incoming_order.order_id,
                                 resting_order.price, traded},
                  callback_context);
       }

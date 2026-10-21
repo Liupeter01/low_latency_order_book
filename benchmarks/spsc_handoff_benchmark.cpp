@@ -2,7 +2,6 @@
 #include "latency_statistics.hpp"
 
 #include "orderbook/spsc_channel.hpp"
-#include "orderbook/types.hpp"
 
 #include <benchmark/benchmark.h>
 
@@ -28,30 +27,26 @@ using Clock = std::chrono::steady_clock;
 constexpr std::uint64_t kWarmupItems = 100'000;
 constexpr std::uint64_t kSampleStride = 100;
 constexpr std::size_t kChannelCapacity = 1024;
+constexpr std::size_t kPackedPayloadBytes = 40;
 
 struct CompactHandoffValue {
   std::uint64_t sequence{};
   std::int64_t published_ns{};
 };
 
-static_assert(sizeof(OrderRequest) >= sizeof(CompactHandoffValue),
-              "OrderRequest must fit sequence and timestamp fields");
-
-struct alignas(alignof(OrderRequest)) OrderRequestSizedHandoffValue {
+struct alignas(std::uint64_t) PackedHandoffValue {
   std::uint64_t sequence{};
   std::int64_t published_ns{};
-  std::array<std::byte, sizeof(OrderRequest) - sizeof(CompactHandoffValue)>
+  std::array<std::byte, kPackedPayloadBytes - sizeof(CompactHandoffValue)>
       payload{};
 };
 
 static_assert(std::is_trivially_copyable<CompactHandoffValue>::value,
               "compact handoff payload must remain trivially copyable");
-static_assert(std::is_trivially_copyable<OrderRequestSizedHandoffValue>::value,
-              "request-sized handoff payload must remain trivially copyable");
-static_assert(sizeof(OrderRequestSizedHandoffValue) == sizeof(OrderRequest),
-              "benchmark payload must match OrderRequest size");
-static_assert(alignof(OrderRequestSizedHandoffValue) == alignof(OrderRequest),
-              "benchmark payload must match OrderRequest alignment");
+static_assert(std::is_trivially_copyable<PackedHandoffValue>::value,
+              "packed handoff payload must remain trivially copyable");
+static_assert(sizeof(PackedHandoffValue) == kPackedPayloadBytes,
+              "packed benchmark payload must remain 40 bytes");
 
 struct alignas(64) PaddedSequence {
   std::atomic<std::uint64_t> value{0};
@@ -207,8 +202,8 @@ void BM_SpscChannel_CompactHandoff(benchmark::State &state) {
   run_one_in_flight_handoff<CompactHandoffValue>(state);
 }
 
-void BM_SpscChannel_OrderRequestSizedHandoff(benchmark::State &state) {
-  run_one_in_flight_handoff<OrderRequestSizedHandoffValue>(state);
+void BM_SpscChannel_Packed40ByteHandoff(benchmark::State &state) {
+  run_one_in_flight_handoff<PackedHandoffValue>(state);
 }
 
 BENCHMARK(BM_SpscChannel_CompactHandoff)
@@ -216,7 +211,7 @@ BENCHMARK(BM_SpscChannel_CompactHandoff)
     ->Iterations(1)
     ->UseManualTime();
 
-BENCHMARK(BM_SpscChannel_OrderRequestSizedHandoff)
+BENCHMARK(BM_SpscChannel_Packed40ByteHandoff)
     ->Arg(1'000'000)
     ->Iterations(1)
     ->UseManualTime();

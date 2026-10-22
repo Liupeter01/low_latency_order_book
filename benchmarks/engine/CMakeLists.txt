@@ -1,0 +1,3 @@
+add_executable(engine_benchmarks engine_pipeline_benchmark.cpp)
+target_link_libraries(engine_benchmarks PRIVATE orderbook)
+configure_orderbook_benchmark(engine_benchmarks)

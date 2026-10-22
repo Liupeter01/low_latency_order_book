@@ -16,7 +16,7 @@ target_compile_options(orderbook_tests PRIVATE
     $<$<CXX_COMPILER_ID:AppleClang,Clang,GNU>:-Wall -Wextra -Wpedantic>
 )
 
-#add_subdirectory(order_book)
+add_subdirectory(order_book)
 add_subdirectory(channel)
 #add_subdirectory(engine)
 

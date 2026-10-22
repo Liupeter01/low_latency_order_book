@@ -18,6 +18,7 @@ target_compile_options(orderbook_tests PRIVATE
 
 add_subdirectory(order_book)
 add_subdirectory(channel)
-#add_subdirectory(engine)
+add_subdirectory(engine)
+add_subdirectory(benchmarks)
 
 gtest_discover_tests(orderbook_tests)

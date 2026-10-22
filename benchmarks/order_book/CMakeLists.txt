@@ -1,0 +1,3 @@
+add_executable(orderbook_benchmarks order_book_throughput_benchmark.cpp)
+target_link_libraries(orderbook_benchmarks PRIVATE orderbook)
+configure_orderbook_benchmark(orderbook_benchmarks)

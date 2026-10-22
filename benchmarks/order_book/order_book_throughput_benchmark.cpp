@@ -1,5 +1,5 @@
-#include "cpu_affinity.hpp"
-#include "latency_statistics.hpp"
+#include "common/cpu_affinity.hpp"
+#include "common/latency_statistics.hpp"
 
 #include "orderbook/order_book.hpp"
 

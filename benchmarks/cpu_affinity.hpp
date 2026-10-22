@@ -59,10 +59,6 @@ bind_current_thread_from_environment(const char *variable) noexcept {
   return result;
 }
 
-inline bool binding_failed(const CpuBindingResult &result) noexcept {
-  return result.requested_cpu >= 0 && !result.applied;
-}
-
 inline std::string binding_description(const char *role,
                                        const CpuBindingResult &result) {
   if (result.requested_cpu < 0) {

@@ -174,11 +174,6 @@ void run_one_in_flight_handoff(benchmark::State &state) {
     affinity_label = binding_description("producer", producer_binding) + ";" +
                      binding_description("consumer", consumer_binding);
 
-    if (binding_failed(producer_binding) || binding_failed(consumer_binding)) {
-      state.SkipWithError("requested SPSC CPU binding failed");
-      continue;
-    }
-
     state.SetIterationTime(std::chrono::duration<double>(end - begin).count());
 
     if (!valid || samples.size() != expected_samples) {

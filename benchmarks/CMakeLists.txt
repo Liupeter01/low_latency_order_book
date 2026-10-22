@@ -1,5 +1,5 @@
 add_executable(orderbook_benchmarks
-    #order_book_service_benchmark.cpp
+    order_book_throughput_benchmark.cpp
     spsc_handoff_benchmark.cpp
 )
 

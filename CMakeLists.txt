@@ -9,7 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 project(low_latency_order_book LANGUAGES CXX)
 
 target_include_directories(orderbook PUBLIC include)
-add_library(orderbook src/dummy.cpp)
+add_library(orderbook src/order_book.cpp)
 target_compile_options(orderbook PRIVATE $<$<CXX_COMPILER_ID:AppleClang,Clang,GNU>:-Wall -Wextra -Wpedantic>)
 
 #add_executable(orderbook_demo examples/demo.cpp)

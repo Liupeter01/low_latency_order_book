@@ -21,9 +21,10 @@ inline std::int64_t percentile(const std::vector<std::int64_t> &sorted,
   return sorted[std::min(index, sorted.size() - 1)];
 }
 
-inline void report_nanosecond_distribution(
-    benchmark::State &state, std::vector<std::int64_t> samples,
-    const char *counter_prefix, const char *empty_sample_error) {
+inline void report_nanosecond_distribution(benchmark::State &state,
+                                           std::vector<std::int64_t> samples,
+                                           const char *counter_prefix,
+                                           const char *empty_sample_error) {
   if (samples.empty()) {
     state.SkipWithError(empty_sample_error);
     return;
@@ -54,8 +55,7 @@ inline void report_nanosecond_distribution(
   state.counters[prefix + "_p99_ns"] = percentile(samples, 0.99);
   state.counters[prefix + "_p999_ns"] = percentile(samples, 0.999);
   state.counters[prefix + "_max_ns"] = samples.back();
-  state.counters[prefix + "_samples"] =
-      static_cast<double>(samples.size());
+  state.counters[prefix + "_samples"] = static_cast<double>(samples.size());
 }
 
 inline void report_latency(benchmark::State &state,

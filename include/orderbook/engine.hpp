@@ -3,6 +3,7 @@
 #include "orderbook/order_book.hpp"
 #include "orderbook/spsc_channel.hpp"
 #include "orderbook/types.hpp"
+#include "spinbackoff/spin_backoff.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -141,12 +142,15 @@ public:
   void run() {
     TradeContext trade_context{this, 0};
 
+    spinbackoff::SpinBackoff backoff;
     for (;;) {
       OrderRequest request;
       if (!requests_.try_read(request)) {
-        std::this_thread::yield();
+        backoff.wait();
         continue;
       }
+
+      backoff.reset();
 
       trade_context.sequence = request.sequence;
       if (request.type == OrderRequestType::Shutdown) {
@@ -194,9 +198,12 @@ private:
   void write_event(const OrderEvent &event) {
     // Events may not be dropped. A production application can replace
     // this policy with batching or a larger channel after measurement.
+    spinbackoff::SpinBackoff backoff;
     while (!events_.try_write(event)) {
-      std::this_thread::yield();
+      backoff.wait();
     }
+
+    //backoff.reset();
   }
 
   static void on_trade(const TradeExecution &trade, void *raw_context) {

@@ -25,6 +25,7 @@ This is a systems-performance project and benchmark harness, not a production-re
 - **Indexed Cancellation**: An order-ID index locates active orders before unlinking them from their price level.
 - **Single-Writer Engine**: Mutable order-book state needs no internal locks or atomics.
 - **Directional Interfaces**: Request writers cannot read events, and event readers cannot submit requests.
+- **Bounded CPU Spin Backoff**: Engine idle and event-backpressure waits use architecture-specific processor hints (`yield` on ARM and `pause` on x86) instead of entering the OS scheduler on supported targets.
 - **Open-Loop Benchmarking**: Fixed-rate arrivals expose producer lateness, queue pressure, backlog, drain time, and latency percentiles.
 
 ### Current Matching Operations
@@ -188,7 +189,7 @@ that the command above is applying 95% load.
 
 ### Test Environment
 
-Measurements below were collected on 2026-10-22:
+Unless a subsection states otherwise, the Apple Silicon measurements below were collected on 2026-10-22 with the original OS-yield wait strategy:
 
 | Component | Configuration |
 | --- | --- |
@@ -307,6 +308,45 @@ The result used in the resume is therefore stated precisely: at a matched
 with zero request-queue-full retries and reduced median per-run scheduled-to-ack
 P99 from 24.75 us to 16.90 us, a 31.7% reduction.
 
+### 6. OS Yield vs Bounded Spin Backoff
+
+On 2026-10-24, the engine wait strategy was measured with a same-machine A/B
+experiment on the Apple M5 Pro. Both variants used the same Release build mode,
+an unpinned three-thread pipeline, 1,000,000 measured requests after 20,000
+warmup requests, an explicit 500,000 requests/s arrival rate, two 4,096-entry
+channels, and one sampled request per 127 requests. Each variant ran ten
+repetitions.
+
+The baseline called the operating-system scheduler when the engine request
+channel was empty or the event channel was full. The current implementation
+uses a bounded exponential spin capped at eight architecture-specific CPU hints
+per wait call. The backoff resets after the engine receives a request.
+
+| Metric | OS yield | Bounded spin backoff | Change |
+| --- | ---: | ---: | ---: |
+| Completed request rate | 500.00K/s | 500.00K/s | Same |
+| Output event rate | 625.00K/s | 625.00K/s | Same |
+| Scheduled latency P50 | 417 ns | 375 ns | **-10.1%** |
+| Scheduled latency P95 | 500 ns | 458 ns | **-8.4%** |
+| Scheduled latency P99 | 5.730 us | 3.584 us | **-37.5%** |
+| Scheduled latency P99.9 | 26.313 us | 18.105 us | **-31.2%** |
+| Scheduled latency maximum | 48.229 us | 43.167 us | **-10.5%** |
+| Scheduled latency mean | 567.743 ns | 471.215 ns | **-17.0%** |
+| Scheduled latency standard deviation | 1.523 us | 1.175 us | **-22.9%** |
+| Scheduled latency CV | 276.72% | 250.39% | -26.33 percentage points |
+| Admitted latency P99 | 5.209 us | 1.729 us | **-66.8%** |
+| Admitted latency P99.9 | 25.979 us | 14.687 us | **-43.5%** |
+| Sampled maximum requests in flight | 22.5 | 19.0 | **-15.6%** |
+| Request-channel-full retries | 0 | 0 | Same |
+| Requests remaining after drain | 0 | 0 | Same |
+
+Each table entry is the median of the ten per-repetition counters. Percentile
+changes compare the median of ten independently calculated per-run percentiles;
+samples from separate repetitions were not pooled. Both variants sustained the
+full target rate with no request-channel-full retries and no work remaining
+after drain, so the latency reductions were not obtained by dropping requests
+or reducing offered load.
+
 ### Open-Loop Timing Model
 
 Arrival times are calculated from the original epoch:
@@ -335,6 +375,9 @@ include/orderbook/
 ├── order_book.hpp            # order-book API and internal declarations
 ├── spsc_channel.hpp          # bounded SPSC ring and directional endpoints
 └── types.hpp                 # shared scalar types
+
+include/spinbackoff/
+└── spin_backoff.hpp          # bounded ARM/x86 processor-hint backoff
 
 src/
 └── order_book.cpp            # matching, cancellation, blocks, and pool

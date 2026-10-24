@@ -25,9 +25,9 @@ public:
   // to 10M, so the multiplication remains inside uint64_t. Computing from the
   // original start avoids accumulating rounded integer intervals.
   std::int64_t scheduled_ns(std::uint64_t request_index) const noexcept {
-    return start_ns_ + static_cast<std::int64_t>(
-                           request_index * kNanosecondsPerSecond /
-                           target_requests_per_second_);
+    return start_ns_ +
+           static_cast<std::int64_t>(request_index * kNanosecondsPerSecond /
+                                     target_requests_per_second_);
   }
 
   // One request interval rounded upward, used only as the lateness threshold.

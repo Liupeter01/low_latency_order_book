@@ -203,7 +203,7 @@ private:
       backoff.wait();
     }
 
-    //backoff.reset();
+    // backoff.reset();
   }
 
   static void on_trade(const TradeExecution &trade, void *raw_context) {

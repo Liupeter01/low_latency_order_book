@@ -181,8 +181,8 @@ RunResult run_pipeline(std::uint64_t measured, std::uint64_t target_rate = 0) {
             result.event_depth_sampled_max, static_cast<std::uint64_t>(depth));
         result.event_depth_sampled_sum += depth;
       }
-      result.valid = workload.validate_completion(event, index, trades) &&
-                     result.valid;
+      result.valid =
+          workload.validate_completion(event, index, trades) && result.valid;
       trades = 0;
       ++index;
       if (index == total) {

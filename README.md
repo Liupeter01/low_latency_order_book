@@ -164,11 +164,23 @@ Run only one engine mode:
 | `ORDERBOOK_BENCHMARK_ENGINE_CPU` | Linux logical CPU for the matching engine |
 | `ORDERBOOK_BENCHMARK_CONSUMER_CPU` | Linux logical CPU for the consumer |
 
-Example fixed-rate run:
+Example fixed-rate run with ten repetitions:
 
 ```bash
-ORDERBOOK_BENCHMARK_REQUESTS=1000000 ORDERBOOK_BENCHMARK_TARGET_RPS=500000 ./build/benchmarks/engine_benchmarks --benchmark_filter='OpenLoop/50/' --benchmark_out=engine-open-loop.json --benchmark_out_format=json
+ORDERBOOK_BENCHMARK_REQUESTS=1000000 \
+ORDERBOOK_BENCHMARK_TARGET_RPS=500000 \
+./build/benchmarks/engine_benchmarks \
+  --benchmark_filter='BM_Engine_Mixed_OpenLoop/95' \
+  --benchmark_repetitions=10 \
+  --benchmark_out=engine-open-loop.json \
+  --benchmark_out_format=json
 ```
+
+`/50`, `/70`, `/85`, and `/95` are benchmark registration parameters used by
+automatic calibration. When `ORDERBOOK_BENCHMARK_TARGET_RPS` is set, the
+explicit rate overrides that percentage for every instance. Selecting one
+suffix therefore prevents four duplicate fixed-rate runs; `/95` does not mean
+that the command above is applying 95% load.
 
 ---
 
@@ -251,6 +263,50 @@ All four runs completed without request-channel-full retries or dropped requests
 
 The sub-microsecond center and the large CV are compatible: rare macOS scheduling pauses are tens or hundreds of times larger than a normal request. The non-monotonic P99 values also show why one short, unpinned run must not be treated as a production tail-latency guarantee.
 
+### 5. Matched CPU-Affinity Experiment
+
+A second experiment was collected on 2026-10-23 under WSL on an Intel
+Core i7-12800HX. Both configurations processed 1,000,000 measured requests
+after 20,000 warmup requests at an explicit 500,000 requests/s arrival rate.
+Each configuration ran ten repetitions, used 4,096-entry request and event
+channels, and sampled every 127th request, producing 7,875 latency samples per
+repetition.
+
+The unpinned configuration allowed the Linux guest scheduler to place all
+three threads. The affinity configuration requested logical CPU 2 for the
+producer, CPU 4 for the matching engine, and CPU 6 for the event consumer.
+
+| Metric | Unpinned | CPU 2/4/6 affinity | Change |
+| --- | ---: | ---: | ---: |
+| Completed request rate | 500.00K/s | 500.00K/s | Same |
+| Output event rate | 625.00K/s | 625.00K/s | Same |
+| Scheduled latency P50 | 467.0 ns | 471.5 ns | +1.0% |
+| Scheduled latency P95 | 652.5 ns | 644.5 ns | -1.2% |
+| Scheduled latency P99 | 24.752 us | 16.895 us | **-31.7%** |
+| Scheduled latency P99.9 | 255.790 us | 246.467 us | -3.6% |
+| Scheduled latency maximum | 540.652 us | 541.462 us | +0.1% |
+| Admitted latency P99 | 9.763 us | 7.469 us | **-23.5%** |
+| Submit lag P99 | 1.639 us | 1.321 us | **-19.4%** |
+| Producer late by at least one interval | 0.953% | 0.888% | -6.8% |
+| Sampled maximum requests in flight | 255.0 | 235.5 | -7.6% |
+| Request-channel-full retries | 0 | 0 | Same |
+
+Every table entry is the median of the ten per-repetition counters. In
+particular, 16.895 us is the median of ten independently calculated P99 values,
+not a percentile recomputed from one pooled sample set.
+
+Affinity improved the typical P99 result but did not eliminate host-level tail
+events. One affinity repetition recorded scheduled-latency P99/P99.9/maximum
+of 124.166 us, 2.317 ms, and 3.805 ms. That outlier raised the across-run mean
+and run-to-run variation even though the median result improved. WSL affinity
+binds a thread to a Linux guest logical CPU; this experiment does not infer
+bare-metal physical-core placement from the CPU numbers alone.
+
+The result used in the resume is therefore stated precisely: at a matched
+500K requests/s offered load, CPU affinity maintained 100% target throughput
+with zero request-queue-full retries and reduced median per-run scheduled-to-ack
+P99 from 24.75 us to 16.90 us, a 31.7% reduction.
+
 ### Open-Loop Timing Model
 
 Arrival times are calculated from the original epoch:
@@ -320,5 +376,5 @@ The standalone SPSC benchmark includes only the channel header and benchmark hel
 - Network protocol parsing and kernel-bypass I/O.
 - Persistence, replay, snapshots, and recovery.
 - Reference-model differential tests, fuzzing, and longer tail-latency runs.
-- Linux measurements with isolated cores, IRQ placement, and controlled CPU frequency.
+- Bare-metal Linux measurements with verified physical-core isolation, IRQ placement, and controlled CPU frequency.
 - Production telemetry, overload policy, and fault handling.

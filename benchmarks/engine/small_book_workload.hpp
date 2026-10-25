@@ -25,7 +25,8 @@ public:
 
     switch (index % kRequestsPerCycle) {
     case 0: // Add the sell that will be matched later in this cycle.
-      return OrderRequest::add(sequence, sequence, Side::Sell, price, kQuantity);
+      return OrderRequest::add(sequence, sequence, Side::Sell, price,
+                               kQuantity);
     case 1: // Rest a buy exactly one tick below that sell.
       return OrderRequest::add(sequence, sequence, Side::Buy, price - kOneTick,
                                kQuantity);

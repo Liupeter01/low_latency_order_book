@@ -219,6 +219,18 @@ void OrderBook::PriceBlockTree::erase_empty_level(PriceTick price) {
   }
 }
 
+// Implementation for prewarming blocks
+void OrderBook::PriceBlockTree::prewarm_blocks() {
+  auto hint = blocks_.end();
+
+  for (BlockNumber block = 0; block < prewarmed_blocks_; ++block) {
+    hint = blocks_.try_emplace(hint, block);
+  }
+
+  // Destroy the temporary tree while retaining node storage in pool_.
+  blocks_.clear();
+}
+
 OrderBook::OrderBook(std::size_t maximum_active_orders)
     : pool_(maximum_active_orders) {
   order_index_.reserve(maximum_active_orders);

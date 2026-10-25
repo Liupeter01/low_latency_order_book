@@ -12,6 +12,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include <memory_resource>
+
 namespace orderbook {
 
 // Represents an order to be added to the order book.
@@ -137,7 +139,12 @@ private:
   // A binary-search tree of non-empty price blocks for one order side.
   class PriceBlockTree {
   public:
-    explicit PriceBlockTree(PricePriority priority) : priority_(priority) {}
+    explicit PriceBlockTree(std::size_t prewarmed_blocks,
+                            PricePriority priority)
+        : priority_(priority), prewarmed_blocks_(prewarmed_blocks),
+          blocks_(&pool_) {
+      prewarm_blocks();
+    }
 
     std::optional<PriceTick> best_price() const noexcept;
     PriceLevel *find_level(PriceTick price) noexcept;
@@ -147,12 +154,18 @@ private:
 
   private:
     using BlockNumber = std::uint64_t;
+    void prewarm_blocks();
 
     static BlockNumber block_number_for(PriceTick price) noexcept;
     static std::size_t slot_for(PriceTick price) noexcept;
 
     PricePriority priority_;
-    std::map<BlockNumber, PriceBlock> blocks_;
+
+    std::size_t prewarmed_blocks_{};
+
+    // Declaration order is important: pool_ must outlive blocks_.
+    std::pmr::unsynchronized_pool_resource pool_;
+    std::pmr::map<BlockNumber, PriceBlock> blocks_;
   };
 
   static bool can_match_at_price(Side incoming_side, PriceTick incoming_limit,
@@ -166,8 +179,9 @@ private:
                                    PriceTick match_price, PriceLevel &level,
                                    NodeIndex resting_index);
 
-  PriceBlockTree buy_prices_{PricePriority::Highest};
-  PriceBlockTree sell_prices_{PricePriority::Lowest};
+  static constexpr std::size_t kPrewarmedBlocksPerSide = 1000;
+  PriceBlockTree buy_prices_{kPrewarmedBlocksPerSide, PricePriority::Highest};
+  PriceBlockTree sell_prices_{kPrewarmedBlocksPerSide, PricePriority::Lowest};
   OrderPool pool_;
   std::unordered_map<OrderId, NodeIndex> order_index_;
 };

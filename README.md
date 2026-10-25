@@ -19,6 +19,7 @@ This is a systems-performance project and benchmark harness, not a production-re
 - **Price-Time Priority**: Best price first, followed by FIFO arrival order at the same price.
 - **Integer Representation**: Prices and quantities use signed 64-bit integers; matching never compares floating-point values.
 - **64-Level Price Blocks**: Consecutive prices share one block and a 64-bit occupancy bitmap.
+- **Prewarmed Price-Block Nodes**: Each side uses a single-threaded PMR pool whose map nodes are created and returned to the pool during startup for allocation-free reuse on the measured path.
 - **Fast Best-Price Selection**: Bit scans select the highest bid or lowest ask inside the best active block.
 - **Intrusive Price-Level FIFO**: Orders at one price are linked by indices stored in preallocated order nodes.
 - **Fixed-Capacity Order Pool**: Filled and canceled order slots are recycled.
@@ -76,7 +77,7 @@ The current design is SPSC because the measured pipeline has one producer. A mul
 ```text
 buy side / sell side
     |
-    +-- std::map<BlockNumber, PriceBlock>
+    +-- std::pmr::map<BlockNumber, PriceBlock>
             |
             +-- 64-bit occupied-level bitmap
             +-- 64 directly indexed PriceLevel objects
@@ -347,6 +348,66 @@ full target rate with no request-channel-full retries and no work remaining
 after drain, so the latency reductions were not obtained by dropping requests
 or reducing offered load.
 
+### 7. Linux CPU-Clock Flame-Graph Profile
+
+The complete three-thread pipeline was profiled on 2026-10-25 inside an ARM64 Ubuntu 24.04 Parallels guest with four virtual CPUs. The producer, engine, and consumer were bound to guest CPUs 1, 2, and 3. `perf record` sampled `cpu-clock` at 1,999 Hz with frame-pointer call graphs. Percentages below are inclusive flame-graph widths and therefore must not be added when one frame is nested inside another.
+
+#### Saturated Throughput
+
+The unpaced profile processed 10,000,000 measured requests after 20,000 warmup requests through two 4,096-entry SPSC channels.
+
+| Metric | Result |
+| --- | ---: |
+| Mean request throughput | **5.767M requests/s** |
+| Median request throughput | **5.750M requests/s** |
+| Mean event throughput | **7.208M events/s** |
+| Whole-run throughput CV | **0.85%** |
+| Pending requests after the final enqueue | 4,086 / 4,096 |
+| Requests remaining after drain | 0 |
+
+The producer intentionally keeps the request channel nearly full in this test. The 429.3M failed enqueue attempts are tight-loop retry observations, not dropped requests. The benchmark registration currently fixes throughput repetitions at five, so the command-line request for fifty repetitions did not override the registered `Repetitions(5)` setting.
+
+![Pinned saturated engine throughput flame graph](assets/perf-engine-throughput-2026-10-25-17-51.svg)
+
+The graph combines three simultaneously running threads, each contributing approximately one third of all CPU-clock samples. A wide event-channel `try_read` frame is primarily the independently pinned consumer polling while it waits for the engine; it is not 25.72% of the matching thread's critical path.
+
+| Inclusive frame | Whole-process width | Interpretation |
+| --- | ---: | --- |
+| `MatchingEngine::run` | 32.82% | Engine thread and its descendants |
+| Event-channel `Reader::try_read` | 25.72% | Consumer polling on its own core |
+| Request-channel `Writer::try_write` | 11.37% | Producer pressure against the saturated request queue |
+| `OrderBook::submit` | 12.06% | Matching-core work |
+| `PriceBlockTree::operator[]` | 9.37% | Price-block lookup or insertion |
+| Red-black-tree emplacement | 7.25% | Ordered-map node insertion and rebalancing |
+| `PriceBlock` construction | 1.81% | Initializing 64 price levels in a reused node |
+| PMR `do_allocate` | 0.04%-0.27% | Pool bookkeeping is no longer a primary hotspot |
+| `prewarm_blocks` | 0.01% | Startup work amortized across the long run |
+
+Compared with the earlier same-guest throughput profile, inclusive `OrderBook::submit` width fell from 16.10% to 12.06%, `PriceBlock` construction fell from 6.33% to 1.81%, and map-node construction fell from 7.47% to 2.32%. End-to-end throughput remained effectively unchanged at approximately 5.77M requests/s, showing that pooling removed allocation work while ordered-tree insertion remained the next bottleneck. The earlier profile is retained at [assets/perf-engine-throughput-2026-10-24-12-28.svg](assets/perf-engine-throughput-2026-10-24-12-28.svg).
+
+#### Fixed-Rate Open Loop
+
+The open-loop profile processed 10,000,000 measured requests in each of nine repetitions at an explicit 500,000 requests/s. Every repetition achieved the target rate with zero request-channel-full retries and no work remaining after drain.
+
+| Median per-run metric | Result |
+| --- | ---: |
+| Scheduled latency P50 | **460 ns** |
+| Scheduled latency P95 | **629 ns** |
+| Scheduled latency P99 | **3.963 us** |
+| Scheduled latency P99.9 | **19.588 us** |
+| Scheduled latency maximum | 1.824 ms |
+| Admitted latency P50 | 333 ns |
+| Admitted latency P99 | 2.875 us |
+| Producer late by at least one interval | 0.868% |
+| Sampled maximum requests in flight | 696 |
+| Request-channel-full retries | 0 |
+
+![Pinned 500K requests per second open-loop flame graph](assets/perf-engine-open-loop-2026-10-25-17-52.svg)
+
+The fixed 500K/s arrival rate is only about 8.7% of the measured maximum throughput. Most samples therefore represent deliberate waiting: producer deadline polling in `spin_until_ns` accounts for 33.19%, its repeated `steady_clock::now` calls account for 32.24%, consumer event polling accounts for 30.88%, and engine `SpinBackoff::wait` accounts for 27.67%. Actual `OrderBook::submit` work is only 0.69% of whole-process samples at this offered load.
+
+The earlier same-guest open-loop profile spent 31.09% of all samples in `sched_yield` and its kernel scheduling path. The current bounded processor-hint backoff removes that scheduler transition. Median scheduled latency improved from 709 ns / 1.046 us / 4.842 us / 20.668 us at P50/P95/P99/P99.9 to 460 ns / 629 ns / 3.963 us / 19.588 us. Rare virtual-machine scheduling stalls remain visible: the median per-run maximum increased from 1.658 ms to 1.824 ms, so the result describes improved typical latency rather than elimination of host-level tail events. The earlier profile is retained at [assets/perf-engine-open-loop-2026-10-24-12-20.svg](assets/perf-engine-open-loop-2026-10-24-12-20.svg).
+
 ### Open-Loop Timing Model
 
 Arrival times are calculated from the original epoch:
@@ -393,6 +454,10 @@ benchmarks/
 ├── channel/                  # standalone SPSC handoff
 ├── order_book/               # direct OrderBook throughput
 └── engine/                   # throughput and open-loop pipeline latency
+
+assets/
+├── perf-engine-throughput-*.svg  # saturated pipeline flame graphs
+└── perf-engine-open-loop-*.svg   # fixed-rate pipeline flame graphs
 ```
 
 The standalone SPSC benchmark includes only the channel header and benchmark helpers. It does not link the order-book or matching-engine implementation.
